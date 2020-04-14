@@ -9,6 +9,7 @@ __email__ = "hedra@singularitynet.io"
 
 # Or any of the latest version with the same type
 
+import argparse
 import pandas as pd
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -24,29 +25,28 @@ def checkdisc(diction, key, value):
   except KeyError:
     return "key error"
 
-def import_data_from_web(version):
-  print("Started downloading the source")
+def import_data_from_web(version, form='tab2'):
+  if form not in ('tab2', 'tab3'):
+      raise RuntimeError("format {0} is not supported".format(form))
   if version:
-    try:
-      thefile = urlopen('https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-'+ version +'/BIOGRID-ORGANISM-'+ version +'.tab2.zip')
-      extracted_files = ZipFile(BytesIO(thefile.read()))
-      dataset = 'BIOGRID-ORGANISM-Homo_sapiens-'+ version +'.tab2.txt'
-      data = pd.read_csv(extracted_files.open(dataset), low_memory=False, delimiter='\t')
-    except:
-      print("Error processing the specified version")
-
+    source = 'https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-'+ version +'/BIOGRID-ORGANISM-'+ version +'.{0}.zip'.format(form)
   else:
-    try:
-      thefile = urlopen('https://downloads.thebiogrid.org/Download/BioGRID/Latest-Release/BIOGRID-ORGANISM-LATEST.tab2.zip')
-      extracted_files = ZipFile(BytesIO(thefile.read()))
+    source = 'https://downloads.thebiogrid.org/Download/BioGRID/Latest-Release/BIOGRID-ORGANISM-LATEST.{0}.zip'.format(form)
+  print("Started downloading the source:\n {0}".format(source))
+  dataset = None
+  try:
+    thefile = urlopen(source)
+    extracted_files = ZipFile(BytesIO(thefile.read()))
+    if version:
+      dataset = 'BIOGRID-ORGANISM-Homo_sapiens-'+ version +'.{0}.txt'.format(form)
+    else:
       dataset = [i for i in extracted_files.namelist() if "BIOGRID-ORGANISM-Homo_sapiens" in i][0]
-      version = dataset.split('-')[-1].replace(".tab2.txt", "")
-      data = pd.read_csv(extracted_files.open(dataset), low_memory=False, delimiter='\t')
-    except:
-      print("Error processing the latest version")
-
-  source = 'https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-'+ version +'/BIOGRID-ORGANISM-'+ version +'.tab2.zip'
-  import_data(data, source, version, gene_level=True)
+      version = dataset.split('-')[-1].replace(".{0}.txt".format(form), "")
+    data = pd.read_csv(extracted_files.open(dataset), low_memory=False, delimiter='\t')
+  except:
+      print("Error processing biogrid version {0}".format(version))
+      raise
+  import_data(data, source, version, gene_level=True, form=form)
   data.to_csv("raw_data/"+dataset, sep='\t',index=False)
 
 def import_local_data(file, form='tab2'):
@@ -137,6 +137,19 @@ def import_data(data, source, version, gene_level=False, form='tab2'):
   print("Done, check "+'dataset/biogrid_gene_gene_'+version+"_"+str(date.today())+'.scm')
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='convert biogrid db to atomese')
+    parser.add_argument('--format', type=str, default='tab2',
+                        help='biogrid format of the data: tab2 or tab3')
+    parser.add_argument('--path', type=str, default='',
+                        help='process local file in biogrid format')
+    parser.add_argument('--download', action='store_true', default=True,
+                        help='download and process db from biogrid')
+    parser.add_argument('--version', type=str, default='',
+                        help='version to download(by default lastest is used)')
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
   """
   usage:
@@ -144,15 +157,16 @@ if __name__ == "__main__":
         python biogrid.py path/to/the/source_data
   Or run the script and specify a version number you wanted or just hit enter (to get the latest)
   """
-  if len(sys.argv)>1:
-    dataset_path = sys.argv[1]
-    if len(sys.argv) == 3:
-        form = sys.argv[2]
-        import_local_data(dataset_path, form)
+  arguments = parse_args()
+  form = arguments.format
+  version = arguments.version
+  if arguments.path:
+    dataset_path = arguments.path
+    if form:
+        import_local_data(dataset_path, form=form)
     else:
         import_local_data(dataset_path)
   else:
     print("Imports interaction between genes (Homo_sapiens) from thebiogrid.com")
-    version = input("Enter A version number or Hit Enter key to get the latest:\n")
-    import_data_from_web(version)
+    import_data_from_web(version, form=form)
 

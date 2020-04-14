@@ -14,25 +14,32 @@ def get_term(class_id):
         term = class_id
     else:
         term = class_id.split("/")[-1]
-        if term[:2] == "GO":
+        if term.startswith("GO") or term.startswith("CL") or term.startswith("UBERON") or term.startswith("CHEBI"):
             term = term.replace("_",":")
+            term = term.replace("CHEBI", "ChEBI")
     return term
+
+def get_type(term):
+    if "ChEBI" in term: 
+        return "MoleculeNode"
+    else:
+        return "ConceptNode"
 
 def evaLink(term1 , term2, predicate):
     if not (str(term1) == "nan" or str(term2) == 'nan'):
         return ("(EvaluationLink \n" +
             "\t (PredicateNode \""+ predicate + "\")\n" +
             "\t (ListLink \n" +
-            "\t\t (ConceptNode"  + " \"" + term1 + "\")\n" +
-            "\t\t (ConceptNode" + " \"" + term2 + "\")))\n" )
+            "\t\t ({}".format(get_type(term1))  + " \"" + term1 + "\")\n" +
+            "\t\t ({}".format(get_type(term2)) + " \"" + term2 + "\")))\n" )
     else:
         return ""
 
 def inheritLink(term1 , term2):
     if not (str(term1) == "nan" or str(term2) == 'nan'):
         return ("(InheritanceLink \n" +
-                "\t (ConceptNode" + " \"" + term1 + "\")\n" +
-                "\t (ConceptNode" + " \"" + term2 + "\"))\n" )
+                "\t ({}".format(get_type(term1)) + " \"" + term1 + "\")\n" +
+                "\t ({}".format(get_type(term2)) + " \"" + term2 + "\"))\n" )
     else:
         return ""
 
@@ -82,7 +89,7 @@ for i in range(len(df)):
         for col in uberon_columns:
             uberon.write(evaLink(term, get_term(df.iloc[i][col]), "UBERON_{}".format(col.replace(" ", "_"))))
 
-    elif obsolete != "true" and "CL" in term or "CHEBI" in term:
+    elif obsolete != "true" and "CL" in term or "ChEBI" in term:
         if "CL" in term:
             file_name = cl
             file_name_with_def = cl_with_def
@@ -92,13 +99,16 @@ for i in range(len(df)):
 
         file_name.write(evaLink(term, get_term(df.iloc[i]["Preferred Label"]), "has_name"))
         file_name_with_def.write(evaLink(term, get_term(df.iloc[i]["Preferred Label"]), "has_name"))
-        file_name_with_def.write(evaLink(term, definition, "UBERON_definition"))
+        file_name_with_def.write(evaLink(term, definition, "has_definition"))
         for col in cl_columns:
             if col == "Parents":
-                file_name.write(inheritLink(term, get_term(df.iloc[i][col])))
-                file_name_with_def.write(inheritLink(term, get_term(df.iloc[i][col])))
+                parents = df.iloc[i][col]
+                if str(parents) != "nan":
+                    for p in parents.split("|"): 
+                        file_name.write(inheritLink(term,get_term(p)))
+                        file_name_with_def.write(inheritLink(term, get_term(p)))
             else:
-                file_name.write(evaLink(term, get_term(df.iloc[i][col]), "CL_{}".format(col.replace(" ", "_"))))
-                file_name_with_def.write(evaLink(term, get_term(df.iloc[i][col]), "CL_{}".format(col.replace(" ", "_"))))
+                file_name.write(evaLink(term, get_term(df.iloc[i][col]), col.replace(" ", "_")))
+                file_name_with_def.write(evaLink(term, get_term(df.iloc[i][col]), col.replace(" ", "_")))
 print("Done")
             
